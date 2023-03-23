@@ -3,12 +3,17 @@
 #include <linux/kernel.h>
 #include <linux/fs.h>   /* for handle device number */
 #include <linux/cdev.h> /* for handle cdev struct */
+#include <linux/ioctl.h>
+#include <asm/uaccess.h>
+#include <choen.h>
 
 #define NUM_OF_DEVICES               2
-
+#define RW_BUFF_SIZE                 256
 struct choen_dev_t {
     const char* name;
     struct cdev cdev;
+    int ioctl_test_buff;
+    char rw_test_buff[RW_BUFF_SIZE];
 };
 
 static struct choen_dev_t dev_table[NUM_OF_DEVICES];
@@ -42,25 +47,77 @@ static int choen_close(struct inode* p_inote, struct file* p_file)
     return 0;
 }
 
-static ssize_t choen_read(struct file* p_inote, char __user * p_buf, size_t len, loff_t* p_offset)
+static ssize_t choen_read(struct file* p_file, char __user * p_buf, size_t len, loff_t* p_offset)
 {
     printk(KERN_INFO "choen_read > is called\n");
     return 0;
 }
 	
-static ssize_t choen_write(struct file* p_inote, const char __user * p_buf, size_t len, loff_t* p_offset)
+static ssize_t choen_write(struct file* p_file, const char __user * p_buf, size_t len, loff_t* p_offset)
 {
     printk(KERN_INFO "choen_write > is called\n");
     return 0;
 }
 
+static int choen_ioctl(struct inode *p_inote, struct file *p_file, unsigned int cmd, unsigned long arg)
+{
+    int ret;
+    struct choen_dev_t* p_dev = p_file->private_data;
 
+    printk(KERN_INFO "choen_ioctl > is called\n");
+
+    if(_IOC_TYPE(cmd) != CHOEN_MAGIC_NUMBER)
+    {
+        printk(KERN_WARNING "choen_ioctl > Command is invalid\n");
+        return -ENOTTY;
+    }
+
+    if ((_IOC_DIR(cmd) == _IOC_READ)
+        ret = access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
+    else 
+        ret = access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
+
+    if (ret == 0)
+    {
+        printk(KERN_WARNING "choen_ioctl > Bad param\n");
+        return -EFAULT;
+    }
+
+    switch (cmd)
+    {
+        case IOCTL_CMD_HELLO:
+        printk(KERN_INFO "choen_ioctl > IOCTL_CMD_HELLO\n");
+        break;
+
+        case IOCTL_CMD_SET_VALUE:
+        printk(KERN_INFO "choen_ioctl > IOCTL_CMD_SET_VALUE\n");
+        p_dev->ioctl_test_buff = arg;
+        break;
+
+        case IOCTL_CMD_SET_PTR:
+        printk(KERN_INFO "choen_ioctl > IOCTL_CMD_SET_PTR\n");
+        get_user(&p_dev->ioctl_test_buff, (int __user *)arg);
+        break;
+
+        case IOCTL_CMD_GET_PTR:
+        printk(KERN_INFO "choen_ioctl > IOCTL_CMD_GET_PTR\n");
+        put_user(&p_dev->ioctl_test_buff, (int __user *)arg);
+        break;
+
+        default:
+        printk(KERN_WARNING "choen_ioctl > CMD UNSUPPORTED\n");
+        return -ENOTTY;
+        break;
+    }
+    return 0;
+}
 static struct file_operations fops = {
     .owner = THIS_MODULE,
     .open = choen_open,
     .release = choen_close,
     .read = choen_read,
     .write = choen_write,
+    .ioctl = choen_ioctl,
 };
 
 static int _dev_init(int index, const char* dev_name, int supported_minors)
