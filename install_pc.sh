@@ -12,4 +12,4 @@ mknod /dev/choen0 c $major 0
 mknod /dev/choen1 c $major 1
 
 chgrp choen /dev/choen[0-1]
-chmod g+rw /dev/choen[0-1]
+chmod a+rw /dev/choen[0-1]

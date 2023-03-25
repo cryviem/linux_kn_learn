@@ -4,7 +4,8 @@
 #include <linux/fs.h>   /* for handle device number */
 #include <linux/cdev.h> /* for handle cdev struct */
 #include <linux/ioctl.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
+#include <linux/string.h>
 #include "choen.h"
 
 #define NUM_OF_DEVICES               2
@@ -14,6 +15,7 @@ struct choen_dev_t {
     struct cdev cdev;
     int ioctl_test_buff;
     char rw_test_buff[RW_BUFF_SIZE];
+    int rw_test_len;
 };
 
 static struct choen_dev_t dev_table[NUM_OF_DEVICES];
@@ -22,7 +24,6 @@ static dev_t dev_num;
 static int choen_open(struct inode * p_inote, struct file * p_file)
 {
     struct choen_dev_t* p_dev;
-    printk(KERN_INFO "choen_open > is called\n");
     p_dev = container_of(p_inote->i_cdev, struct choen_dev_t, cdev);
     if (p_dev == NULL)
     {
@@ -37,7 +38,6 @@ static int choen_open(struct inode * p_inote, struct file * p_file)
 static int choen_close(struct inode* p_inote, struct file* p_file)
 {
     struct choen_dev_t* p_dev = p_file->private_data;
-    printk(KERN_INFO "choen_close > is called\n");
     if (p_dev == NULL)
     {
         printk(KERN_WARNING "choen_close > fail to get choen_dev_t object\n");
@@ -49,15 +49,46 @@ static int choen_close(struct inode* p_inote, struct file* p_file)
 
 static ssize_t choen_read(struct file* p_file, char __user * p_buf, size_t len, loff_t* p_offset)
 {
-    printk(KERN_INFO "choen_read > is called\n");
-    return 0;
+    struct choen_dev_t* p_dev = p_file->private_data;
+    int l_len;
+
+    if (p_dev == NULL)
+    {
+        printk(KERN_WARNING "choen_read > fail to get choen_dev_t object\n");
+        return -EFAULT;
+    }
+    l_len = (len > p_dev->rw_test_len)? p_dev->rw_test_len : len;
+    
+    
+    if(0 != copy_to_user(p_buf, p_dev->rw_test_buff, l_len))
+    {
+        return -EFAULT;
+    }
+    printk(KERN_INFO "choen_read > success read len %d, request len %ld\n", l_len, len);
+    return l_len;
 }
 	
 static ssize_t choen_write(struct file* p_file, const char __user * p_buf, size_t len, loff_t* p_offset)
 {
-    printk(KERN_INFO "choen_write > is called\n");
-    /* return len to assume write operation successfully handled */
-    return len;
+    struct choen_dev_t* p_dev = p_file->private_data;
+    int l_len;
+
+    if (p_dev == NULL)
+    {
+        printk(KERN_WARNING "choen_write > fail to get choen_dev_t object\n");
+        return -EFAULT;
+    }
+    l_len = (len > RW_BUFF_SIZE)? RW_BUFF_SIZE : len;
+    
+    memset(p_dev->rw_test_buff, 0, RW_BUFF_SIZE);
+    p_dev->rw_test_len = 0;
+    if(0 != copy_from_user(p_dev->rw_test_buff, p_buf, l_len))
+    {
+        return -EFAULT;
+    }
+    p_dev->rw_test_len = l_len;
+    printk(KERN_INFO "choen_write > success write len %d, data %s\n", l_len, p_dev->rw_test_buff);
+    return l_len;
 }
 
 static long choen_ioctl(struct file *p_file, unsigned int cmd, unsigned long arg)
