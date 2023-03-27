@@ -50,6 +50,7 @@ static int choen_close(struct inode* p_inote, struct file* p_file)
 static ssize_t choen_read(struct file* p_file, char __user * p_buf, size_t len, loff_t* p_offset)
 {
     struct choen_dev_t* p_dev = p_file->private_data;
+    loff_t l_offset = *p_offset;
     int l_len;
 
     if (p_dev == NULL)
@@ -57,13 +58,29 @@ static ssize_t choen_read(struct file* p_file, char __user * p_buf, size_t len, 
         printk(KERN_WARNING "choen_read > fail to get choen_dev_t object\n");
         return -EFAULT;
     }
-    l_len = (len > p_dev->rw_test_len)? p_dev->rw_test_len : len;
+
+    if ((l_offset + len) > p_dev->rw_test_len)
+    {
+        l_len = p_dev->rw_test_len - l_offset;
+    }
+    else
+    {
+        l_len = len;
+    }
     
-    
-    if(0 != copy_to_user(p_buf, p_dev->rw_test_buff, l_len))
+    if ( l_len <= 0)
+    {
+        /* reach EOF */
+        return 0;
+    }
+
+    if(0 != copy_to_user(p_buf, (p_dev->rw_test_buff + l_offset), l_len))
     {
         return -EFAULT;
     }
+
+    l_offset += l_len;
+    *p_offset = l_offset;
     printk(KERN_INFO "choen_read > success read len %d, request len %ld\n", l_len, len);
     return l_len;
 }
@@ -71,6 +88,7 @@ static ssize_t choen_read(struct file* p_file, char __user * p_buf, size_t len, 
 static ssize_t choen_write(struct file* p_file, const char __user * p_buf, size_t len, loff_t* p_offset)
 {
     struct choen_dev_t* p_dev = p_file->private_data;
+    loff_t l_offset = *p_offset;
     int l_len;
 
     if (p_dev == NULL)
@@ -78,16 +96,36 @@ static ssize_t choen_write(struct file* p_file, const char __user * p_buf, size_
         printk(KERN_WARNING "choen_write > fail to get choen_dev_t object\n");
         return -EFAULT;
     }
-    l_len = (len > RW_BUFF_SIZE)? RW_BUFF_SIZE : len;
+
+    if (l_offset == 0)
+    {
+        memset(p_dev->rw_test_buff, 0, RW_BUFF_SIZE);
+        p_dev->rw_test_len = 0;
+    }
+
+    if ((l_offset + len) > RW_BUFF_SIZE)
+    {
+        l_len = RW_BUFF_SIZE - l_offset;
+    }
+    else
+    {
+        l_len = len;
+    }
     
-    memset(p_dev->rw_test_buff, 0, RW_BUFF_SIZE);
-    p_dev->rw_test_len = 0;
-    if(0 != copy_from_user(p_dev->rw_test_buff, p_buf, l_len))
+    if ( l_len <= 0)
+    {
+        return 0;
+    }
+
+    if(0 != copy_from_user((p_dev->rw_test_buff + l_offset), p_buf, l_len))
     {
         return -EFAULT;
     }
-    p_dev->rw_test_len = l_len;
-    printk(KERN_INFO "choen_write > success write len %d, data %s\n", l_len, p_dev->rw_test_buff);
+
+    l_offset += l_len;
+    p_dev->rw_test_len = l_offset;
+    *p_offset = l_offset;
+    printk(KERN_INFO "choen_write > success write len %d, data: %s\n", l_len, p_dev->rw_test_buff);
     return l_len;
 }
 
