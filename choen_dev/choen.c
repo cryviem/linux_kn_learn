@@ -9,13 +9,12 @@
 #include "choen.h"
 
 #define NUM_OF_DEVICES               2
-#define RW_BUFF_SIZE                 256
+
 struct choen_dev_t {
     const char* name;
     struct cdev cdev;
     int ioctl_test_buff;
-    char rw_test_buff[RW_BUFF_SIZE];
-    int rw_test_len;
+    ring_buffer_t ring_buff;
 };
 
 static struct choen_dev_t dev_table[NUM_OF_DEVICES];
