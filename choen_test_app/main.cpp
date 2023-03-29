@@ -53,6 +53,7 @@ static void read_device(const char* dev_name)
     {
         std::cout << "Read " << ret << " byte, > " << rbuf << std::endl;
     }
+    close(fd);
 } 
 
 static void write_device(const char* dev_name, char* buf, int len)
@@ -75,6 +76,7 @@ static void write_device(const char* dev_name, char* buf, int len)
     {
         std::cout << "Write OK" << std::endl;
     }
+    close(fd);
 } 
 
 static void ioctl_device(const char* dev_name, unsigned int cmd, unsigned long arg)
@@ -91,6 +93,7 @@ static void ioctl_device(const char* dev_name, unsigned int cmd, unsigned long a
     {
         std::cout << "Fail ioctl, ret " << ret << std::endl;
     }
+    close(fd);
 }
 
 int main(int argc, char* argv[])

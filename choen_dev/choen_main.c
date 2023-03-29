@@ -6,7 +6,9 @@
 #include <linux/ioctl.h>
 #include <linux/uaccess.h>
 #include <linux/string.h>
-#include "choen.h"
+#include <linux/wait.h>
+#include "choen_main.h"
+#include "ring_buffer.h"
 
 #define NUM_OF_DEVICES               2
 
@@ -15,6 +17,8 @@ struct choen_dev_t {
     struct cdev cdev;
     int ioctl_test_buff;
     ring_buffer_t ring_buff;
+    wait_queue_head_t rd_wq;
+    wait_queue_head_t wr_wq;
 };
 
 static struct choen_dev_t dev_table[NUM_OF_DEVICES];
@@ -58,26 +62,46 @@ static ssize_t choen_read(struct file* p_file, char __user * p_buf, size_t len, 
         return -EFAULT;
     }
 
-    if ((l_offset + len) > p_dev->rw_test_len)
+    if (l_offset > 0)
     {
-        l_len = p_dev->rw_test_len - l_offset;
-    }
-    else
-    {
-        l_len = len;
-    }
-    
-    if ( l_len <= 0)
-    {
-        /* reach EOF */
+        /* finish read */
         return 0;
     }
+    /* lock rb before checking readable */
+    if (0 != rb_lock(&p_dev->ring_buff))
+    {
+        /* user terminate process */
+        return -ERESTARTSYS;
+    }
+    while (!rb_is_readable(&p_dev->ring_buff))
+    {
+        rb_unlock(&p_dev->ring_buff);
 
-    if(0 != copy_to_user(p_buf, (p_dev->rw_test_buff + l_offset), l_len))
+        if (p_file->f_flags & O_NONBLOCK)
+        {
+            /* in case non-blocking mode, return with -EAGAIN */
+            return -EAGAIN;
+        }
+        if (0 != wait_event_interruptible(p_dev->rd_wq, rb_is_readable(&p_dev->ring_buff)))
+        {
+            /* user terminate process */
+            return -ERESTARTSYS;
+        }
+        /* someone has just write data, go and get it */
+        if (0 != rb_lock(&p_dev->ring_buff))
+        {
+            /* user terminate process */
+            return -ERESTARTSYS;
+        }
+    }
+    l_len = rb_usr_read(&p_dev->ring_buff, p_buf, len);
+    rb_unlock(&p_dev->ring_buff);
+    if (l_len < 0)
     {
         return -EFAULT;
     }
-
+    /* notify pending write procs */
+    wake_up_interruptible(&p_dev->wr_wq);
     l_offset += l_len;
     *p_offset = l_offset;
     printk(KERN_INFO "choen_read > success read len %d, request len %ld\n", l_len, len);
@@ -88,44 +112,57 @@ static ssize_t choen_write(struct file* p_file, const char __user * p_buf, size_
 {
     struct choen_dev_t* p_dev = p_file->private_data;
     loff_t l_offset = *p_offset;
-    int l_len;
-
+    int ret;
     if (p_dev == NULL)
     {
         printk(KERN_WARNING "choen_write > fail to get choen_dev_t object\n");
         return -EFAULT;
     }
 
-    if (l_offset == 0)
+    if (l_offset > 0)
     {
-        memset(p_dev->rw_test_buff, 0, RW_BUFF_SIZE);
-        p_dev->rw_test_len = 0;
+        /* not support 2nd write */
+        return len;
     }
+    /* lock rb before checking readable */
+    if (0 != rb_lock(&p_dev->ring_buff))
+    {
+        /* user terminate process */
+        return -ERESTARTSYS;
+    }
+    while (!rb_is_writable(&p_dev->ring_buff))
+    {
+        rb_unlock(&p_dev->ring_buff);
 
-    if ((l_offset + len) > RW_BUFF_SIZE)
-    {
-        l_len = RW_BUFF_SIZE - l_offset;
+        if (p_file->f_flags & O_NONBLOCK)
+        {
+            /* in case non-blocking mode, return with -EAGAIN */
+            return -EAGAIN;
+        }
+        if (0 != wait_event_interruptible(p_dev->wr_wq, rb_is_writable(&p_dev->ring_buff)))
+        {
+            /* user terminate process */
+            return -ERESTARTSYS;
+        }
+        /* slot available */
+        if (0 != rb_lock(&p_dev->ring_buff))
+        {
+            /* user terminate process */
+            return -ERESTARTSYS;
+        }
     }
-    else
-    {
-        l_len = len;
-    }
-    
-    if ( l_len <= 0)
-    {
-        return 0;
-    }
-
-    if(0 != copy_from_user((p_dev->rw_test_buff + l_offset), p_buf, l_len))
+    ret = rb_usr_write(&p_dev->ring_buff, p_buf, len);
+    rb_unlock(&p_dev->ring_buff);
+    if (ret != 0)
     {
         return -EFAULT;
     }
-
-    l_offset += l_len;
-    p_dev->rw_test_len = l_offset;
+    /* notify pending read procs */
+    wake_up_interruptible(&p_dev->rd_wq);
+    l_offset += len;
     *p_offset = l_offset;
-    printk(KERN_INFO "choen_write > success write len %d, data: %s\n", l_len, p_dev->rw_test_buff);
-    return l_len;
+    printk(KERN_INFO "choen_write > success write %ld bytes\n", len);
+    return len;
 }
 
 static long choen_ioctl(struct file *p_file, unsigned int cmd, unsigned long arg)
@@ -198,6 +235,13 @@ static int _dev_init(int index, const char* dev_name, int supported_minors)
     dev_table[index].cdev.owner = THIS_MODULE;
     dev_table[index].name = dev_name;
 
+    if (0 != rb_init(&dev_table[index].ring_buff))
+    {
+        return -1;
+    }
+    init_waitqueue_head(&dev_table[index].rd_wq);
+    init_waitqueue_head(&dev_table[index].wr_wq);
+
     if (0 != cdev_add(&dev_table[index].cdev, l_dev_num, supported_minors))
     {
         printk(KERN_WARNING "_dev_init > fail to register cdev index %d\n", index);
@@ -241,7 +285,7 @@ static void __exit choen_exit(void) /* Destructor */
 
 module_init(choen_init);
 module_exit(choen_exit);
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Nguyen Hong An");
 MODULE_DESCRIPTION("Hello world ldd");
 MODULE_INFO(intree, "Y");
