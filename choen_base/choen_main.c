@@ -6,7 +6,7 @@
 #include <linux/ioctl.h>
 #include <linux/uaccess.h>
 #include <linux/string.h>
-#include "choen.h"
+#include "choen_main.h"
 
 #define NUM_OF_DEVICES               2
 #define RW_BUFF_SIZE                 256
