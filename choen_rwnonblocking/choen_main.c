@@ -4,6 +4,7 @@
 #include <linux/fs.h>   /* for handle device number */
 #include <linux/cdev.h> /* for handle cdev struct */
 #include <linux/ioctl.h>
+#include <linux/poll.h>
 #include <linux/uaccess.h>
 #include <linux/string.h>
 #include <linux/wait.h>
@@ -165,6 +166,31 @@ static ssize_t choen_write(struct file* p_file, const char __user * p_buf, size_
     return len;
 }
 
+static __poll_t choen_poll(struct file* p_file, struct poll_table_struct* p_poll_table)
+{
+    struct choen_dev_t* p_dev = p_file->private_data;
+    unsigned int mask = 0;
+
+    if (p_dev == NULL)
+    {
+        printk(KERN_WARNING "choen_poll > fail to get choen_dev_t object\n");
+        return -EFAULT;
+    }
+
+    poll_wait(p_file, &p_dev->rd_wq, p_poll_table);
+    poll_wait(p_file, &p_dev->wr_wq, p_poll_table);
+
+    if (0 != rb_lock(&p_dev->ring_buff))
+    {
+        /* user terminate process */
+        return -ERESTARTSYS;
+    }
+
+    /* set mask */
+    rb_unlock(&p_dev->ring_buff);
+    return mask;
+}
+
 static long choen_ioctl(struct file *p_file, unsigned int cmd, unsigned long arg)
 {
     int ret;
@@ -224,6 +250,7 @@ static struct file_operations fops = {
     .read = choen_read,
     .write = choen_write,
     .unlocked_ioctl = choen_ioctl,
+    .poll = choen_poll,
 };
 
 static int _dev_init(int index, const char* dev_name, int supported_minors)
