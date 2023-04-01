@@ -62,7 +62,6 @@ static ssize_t choen_read(struct file* p_file, char __user * p_buf, size_t len, 
         printk(KERN_WARNING "choen_read > fail to get choen_dev_t object\n");
         return -EFAULT;
     }
-
     if (l_offset > 0)
     {
         /* finish read */
@@ -119,7 +118,6 @@ static ssize_t choen_write(struct file* p_file, const char __user * p_buf, size_
         printk(KERN_WARNING "choen_write > fail to get choen_dev_t object\n");
         return -EFAULT;
     }
-
     if (l_offset > 0)
     {
         /* not support 2nd write */
@@ -176,17 +174,23 @@ static __poll_t choen_poll(struct file* p_file, struct poll_table_struct* p_poll
         printk(KERN_WARNING "choen_poll > fail to get choen_dev_t object\n");
         return -EFAULT;
     }
-
     poll_wait(p_file, &p_dev->rd_wq, p_poll_table);
     poll_wait(p_file, &p_dev->wr_wq, p_poll_table);
-
     if (0 != rb_lock(&p_dev->ring_buff))
     {
         /* user terminate process */
         return -ERESTARTSYS;
     }
 
-    /* set mask */
+    if (rb_is_readable(&p_dev->ring_buff))
+    {
+        mask |= (POLLIN|POLLRDNORM);
+    }
+    if (rb_is_writable(&p_dev->ring_buff))
+    {
+        mask |= (POLLOUT|POLLWRNORM);
+    }
+
     rb_unlock(&p_dev->ring_buff);
     return mask;
 }

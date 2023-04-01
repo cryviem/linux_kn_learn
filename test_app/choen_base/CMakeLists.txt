@@ -6,4 +6,4 @@ add_executable(choen_app
     main.cpp)
 
 target_include_directories(choen_app PUBLIC
-    ../choen_dev)
+    ../../choen_rwnonblocking)
