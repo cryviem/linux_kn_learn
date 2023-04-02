@@ -20,6 +20,7 @@ struct choen_dev_t {
     ring_buffer_t ring_buff;
     wait_queue_head_t rd_wq;
     wait_queue_head_t wr_wq;
+    struct fasync_struct* async;
 };
 
 static struct choen_dev_t dev_table[NUM_OF_DEVICES];
@@ -158,6 +159,11 @@ static ssize_t choen_write(struct file* p_file, const char __user * p_buf, size_
     }
     /* notify pending read procs */
     wake_up_interruptible(&p_dev->rd_wq);
+    if (p_dev->async != NULL)
+    {
+        kill_fasync(&p_dev->async, SIGIO, POLL_IN);
+    }
+    
     l_offset += len;
     *p_offset = l_offset;
     printk(KERN_INFO "choen_write > success write %ld bytes\n", len);
@@ -195,7 +201,7 @@ static __poll_t choen_poll(struct file* p_file, struct poll_table_struct* p_poll
     return mask;
 }
 
-static long choen_ioctl(struct file *p_file, unsigned int cmd, unsigned long arg)
+static long choen_ioctl(struct file* p_file, unsigned int cmd, unsigned long arg)
 {
     int ret;
     struct choen_dev_t* p_dev = p_file->private_data;
@@ -247,6 +253,22 @@ static long choen_ioctl(struct file *p_file, unsigned int cmd, unsigned long arg
     }
     return 0;
 }
+
+static int choen_fasync(int fd, struct file* p_file, int mode)
+{
+    struct choen_dev_t* p_dev = p_file->private_data;
+    int ret;
+
+    if (p_dev == NULL)
+    {
+        printk(KERN_WARNING "choen_fasync > fail to get choen_dev_t object\n");
+        return -EFAULT;
+    }
+
+    ret = fasync_helper(fd, p_file, mode, &p_dev->async);
+    printk(KERN_INFO "choen_fasync > fasync_helper return %d\n", ret);
+}
+
 static struct file_operations fops = {
     .owner = THIS_MODULE,
     .open = choen_open,
@@ -255,6 +277,7 @@ static struct file_operations fops = {
     .write = choen_write,
     .unlocked_ioctl = choen_ioctl,
     .poll = choen_poll,
+    .fasync = choen_fasync,
 };
 
 static int _dev_init(int index, const char* dev_name, int supported_minors)
