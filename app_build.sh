@@ -1,7 +1,7 @@
 
 
-rm -rf $PWD/choen_test_app/out
-mkdir $PWD/choen_test_app/out && cd $PWD/choen_test_app/out
+rm -rf $PWD/test_app/out
+mkdir $PWD/test_app/out && cd $PWD/test_app/out
 cmake .. || exit 1
 make
 cd ../..
