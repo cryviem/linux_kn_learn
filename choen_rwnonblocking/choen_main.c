@@ -66,6 +66,7 @@ static ssize_t choen_read(struct file* p_file, char __user * p_buf, size_t len, 
     if (l_offset > 0)
     {
         /* finish read */
+        printk(KERN_WARNING "choen_read > offset is non zero\n");
         return 0;
     }
     /* lock rb before checking readable */
@@ -267,6 +268,7 @@ static int choen_fasync(int fd, struct file* p_file, int mode)
 
     ret = fasync_helper(fd, p_file, mode, &p_dev->async);
     printk(KERN_INFO "choen_fasync > fasync_helper return %d\n", ret);
+    return ret;
 }
 
 static struct file_operations fops = {

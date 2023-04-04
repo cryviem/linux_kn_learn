@@ -1,4 +1,4 @@
-project(long_run)
+project(choen)
 cmake_minimum_required (VERSION 3.10)
 find_package(Threads REQUIRED)
 
