@@ -17,5 +17,5 @@ major=`awk '/choen/ {print $1}' /proc/devices`
 mknod /dev/choen0 c $major 0
 mknod /dev/choen1 c $major 1
 
-chgrp choen /dev/choen[0-1]
+chgrp an /dev/choen[0-1]
 chmod a+rw /dev/choen[0-1]

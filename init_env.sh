@@ -1,5 +1,5 @@
 # Add more project to this list
-list="choen_base choen_rwblocking choen_rwnonblocking"
+list="choen_base choen_rwblocking choen_rwnonblocking platform0"
 
 if [ -z $1 ]
 then

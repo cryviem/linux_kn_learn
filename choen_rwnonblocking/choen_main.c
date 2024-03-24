@@ -173,6 +173,7 @@ static ssize_t choen_write(struct file* p_file, const char __user * p_buf, size_
 
 static __poll_t choen_poll(struct file* p_file, struct poll_table_struct* p_poll_table)
 {
+    printk(KERN_INFO "choen_poll > enter\n");
     struct choen_dev_t* p_dev = p_file->private_data;
     unsigned int mask = 0;
 
@@ -181,8 +182,11 @@ static __poll_t choen_poll(struct file* p_file, struct poll_table_struct* p_poll
         printk(KERN_WARNING "choen_poll > fail to get choen_dev_t object\n");
         return -EFAULT;
     }
+    printk(KERN_INFO "choen_poll > start of poll_wait\n");
     poll_wait(p_file, &p_dev->rd_wq, p_poll_table);
+    printk(KERN_INFO "choen_poll > mid of poll_wait\n");
     poll_wait(p_file, &p_dev->wr_wq, p_poll_table);
+    printk(KERN_INFO "choen_poll > end of poll_wait\n");
     if (0 != rb_lock(&p_dev->ring_buff))
     {
         /* user terminate process */
@@ -199,6 +203,7 @@ static __poll_t choen_poll(struct file* p_file, struct poll_table_struct* p_poll
     }
 
     rb_unlock(&p_dev->ring_buff);
+    printk(KERN_INFO "choen_poll > exit\n");
     return mask;
 }
 
