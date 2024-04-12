@@ -6,6 +6,8 @@
 #include <linux/ioctl.h>
 #include <linux/uaccess.h>
 #include <linux/string.h>
+#include <linux/device.h>
+#include <linux/class.h>
 #include "choen_main.h"
 
 #define NUM_OF_DEVICES               2
@@ -13,6 +15,7 @@
 struct choen_dev_t {
     const char* name;
     struct cdev cdev;
+    struct device* pdev;
     int ioctl_test_buff;
     char rw_test_buff[RW_BUFF_SIZE];
     int rw_test_len;
@@ -20,6 +23,7 @@ struct choen_dev_t {
 
 static struct choen_dev_t dev_table[NUM_OF_DEVICES];
 static dev_t dev_num;
+static struct class* pclass = NULL;
 
 static int choen_open(struct inode * p_inote, struct file * p_file)
 {
@@ -190,7 +194,7 @@ static struct file_operations fops = {
     .unlocked_ioctl = choen_ioctl,
 };
 
-static int _dev_init(int index, const char* dev_name, int supported_minors)
+static int _dev_init(int index, const char* dev_name, int supported_minors, struct class* pcl)
 {
     int major_num = MAJOR(dev_num);
     dev_t l_dev_num = MKDEV(major_num, index);
@@ -204,6 +208,12 @@ static int _dev_init(int index, const char* dev_name, int supported_minors)
         printk(KERN_WARNING "_dev_init > fail to register cdev index %d\n", index);
 		return -1;
     }
+
+    if (pcl != NULL)
+    {
+        dev_table[index].pdev = device_create(pclass, NULL, l_dev_num, NULL, sprint("choen-dev%d", index));
+    }
+    
     printk(KERN_INFO "_dev_init > SUCCESS !!!, major %d - minor %d\n", major_num, index);
     return 0;
 }
@@ -217,6 +227,8 @@ static int __init choen_init(void) /* Constructor */
         printk(KERN_WARNING "choen_init > fail to allocate device number\n");
 		goto error0;
     }
+
+    pclass = class_create(THIS_MODULE, "choen");
 
     if ( _dev_init(0, "dev0", 1) || _dev_init(1, "dev1", 1))
     {
@@ -234,7 +246,9 @@ error0:
 static void __exit choen_exit(void) /* Destructor */
 {
     printk(KERN_INFO "Goodbye: choen unregistered\n");
-
+    device_destroy(pclass, MKDEV(MAJOR(dev_num), 0));
+    device_destroy(pclass, MKDEV(MAJOR(dev_num), 1));
+    class_destroy(pclass);
     cdev_del(&dev_table[0].cdev);
     cdev_del(&dev_table[1].cdev);
     unregister_chrdev_region(dev_num, NUM_OF_DEVICES);

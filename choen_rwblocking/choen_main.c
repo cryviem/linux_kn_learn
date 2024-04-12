@@ -75,6 +75,7 @@ static ssize_t choen_read(struct file* p_file, char __user * p_buf, size_t len, 
     }
     while (!rb_is_readable(&p_dev->ring_buff))
     {
+        /* must unlock rb here to let others write something to rb, then we can read it*/
         rb_unlock(&p_dev->ring_buff);
 
         if (p_file->f_flags & O_NONBLOCK)
@@ -82,6 +83,7 @@ static ssize_t choen_read(struct file* p_file, char __user * p_buf, size_t len, 
             /* in case non-blocking mode, return with -EAGAIN */
             return -EAGAIN;
         }
+        /* query rb status w/o lock mutex ??? */
         if (0 != wait_event_interruptible(p_dev->rd_wq, rb_is_readable(&p_dev->ring_buff)))
         {
             /* user terminate process */
