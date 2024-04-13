@@ -12,6 +12,7 @@ This module aim to register those pseudo platform devices
 struct choen_dev_priv {
     const char * serial;
 };
+
 struct choen_dev_priv choen_priv_table[2] = 
 {
     {.serial = "CHOENSN0"},
