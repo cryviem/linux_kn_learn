@@ -5,3 +5,5 @@
 #define IOCTL_CMD_SET_VALUE         _IO(CHOEN_MAGIC_NUMBER, 2)
 #define IOCTL_CMD_SET_PTR           _IOW(CHOEN_MAGIC_NUMBER, 3, int)
 #define IOCTL_CMD_GET_PTR           _IOR(CHOEN_MAGIC_NUMBER, 4, int)
+
+#define DYNAMIC_DEV_NODE    
