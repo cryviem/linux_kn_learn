@@ -7,23 +7,59 @@
 #include <linux/platform_device.h>
 #include <linux/device.h>
 #include <linux/device/class.h>
+#include <linux/slab.h>
 #include "choen_common.h"
 
 #define NUM_OF_DEVICES      2
-
+/* choen driver handler is static and hold general driver information */
 struct choen_drv_handler {
-    dev_t dev_num_base;
+    int major;
+    int dev_count;
     struct class *pclass;
 };
 
+/* choen device handler is dynamic allocated upon a device appears, 
+hold specific info to handle this device */
 struct choen_dev_handler {
+    dev_t dev_num;
+    struct device *pdev;
     struct cdev cdev;
 };
 
-static struct choen_drv_handler choen_drv_box;
+static struct choen_drv_handler choen_drv_box = {0, 0, NULL};
 
+/****************** open - close - read - write ***********************/
+static int choen_open(struct inode * p_inote, struct file * p_file)
+{
+    return 0;
+}
+
+static int choen_close(struct inode* p_inote, struct file* p_file)
+{
+    return 0;
+}
+
+static ssize_t choen_read(struct file* p_file, char __user * p_buf, size_t len, loff_t* p_offset)
+{
+    return 0;
+}
+	
+static ssize_t choen_write(struct file* p_file, const char __user * p_buf, size_t len, loff_t* p_offset)
+{
+    return len;
+}
+
+static struct file_operations fops = {
+    .owner = THIS_MODULE,
+    .open = choen_open,
+    .release = choen_close,
+    .read = choen_read,
+    .write = choen_write,
+};
+/****************** open - close - read - write ***********************/
 int choen_probe(struct platform_device* pdev)
 {
+    int ret;
     struct choen_dev_priv *pdev_prv_data;
     struct choen_dev_handler *pchoen_dev_box;
 
@@ -33,28 +69,72 @@ int choen_probe(struct platform_device* pdev)
     if (pdev_prv_data == NULL)
     {
         pr_warn("choen_probe > no device private data found\n");
-        return -EINVAL;
+        ret = -EINVAL;
+        goto error0;
     }
 
     pr_info("choen_probe > connected to device serial: %s\n", pdev_prv_data->serial);
 
     /* 1 - allocate choen_dev_handler instant */
+    pchoen_dev_box = kzalloc(sizeof(struct choen_dev_handler), GFP_KERNEL);
+    if (!pchoen_dev_box) {
+        pr_err("choen_probe > fail to allocate memory\n");
+        ret = -ENOMEM;
+        goto error0;
+    }
     /* 2 - register character device */
+    cdev_init(&pchoen_dev_box->cdev, &fops);
+    pchoen_dev_box->cdev.owner = THIS_MODULE;
+    pchoen_dev_box->dev_num = MKDEV(choen_drv_box.major, choen_drv_box.dev_count);
+
+    ret = cdev_add(&pchoen_dev_box->cdev, pchoen_dev_box->dev_num, 1);
+    if (0 != ret)
+    {
+        pr_err("_dev_init > fail to register cdev\n");
+		goto error1;
+    }
     /* 3 - create device item in /sys/class/choen-class */
+    pchoen_dev_box->pdev = device_create(choen_drv_box.pclass, NULL, pchoen_dev_box->dev_num, NULL, "choen%d", choen_drv_box.dev_count);
+    if (IS_ERR(pchoen_dev_box->pdev))
+    {
+        ret = (int)PTR_ERR(pchoen_dev_box->pdev);
+        pr_warn("choen_init > fail to add device to class, err %d\n", ret);
+
+        goto error2;
+    }
+
+    /* 4 - save choen_dev_handler instance pointer to */
+    dev_set_drvdata(&pdev->dev, pchoen_dev_box);
+
+    choen_drv_box.dev_count++;
     return 0;
+
+error2:
+    cdev_del(&pchoen_dev_box->cdev);
+error1:
+    kfree(pchoen_dev_box);
+error0:
+    return ret;
 }
 
 int choen_remove(struct platform_device* pdev)
 {
     struct choen_dev_priv *pdev_prv_data;
-
+    struct choen_dev_handler *pchoen_dev_box;
     pr_info("choen_remove is called\n");
 
     pdev_prv_data = (struct choen_dev_priv*)dev_get_platdata(&pdev->dev);
     if (pdev_prv_data != NULL)
     {
-        pr_info("choen_probe > disconnecting from device serial: %s\n", pdev_prv_data->serial);
+        pr_info("choen_remove > disconnecting from device serial: %s\n", pdev_prv_data->serial);
     }
+    pchoen_dev_box = dev_get_drvdata(&pdev->dev);
+    if (pchoen_dev_box == NULL)
+    {
+        pr_err("choen_remove > choen_dev_handler object not found\n");
+        return -1;
+    }
+    device_destroy(choen_drv_box.pclass, pchoen_dev_box->dev_num);
     
     return 0;
 }
@@ -68,13 +148,14 @@ struct platform_driver choen_driver =
 
 static int __init choen_init(void) /* Constructor */
 {
+    dev_t devn;
     /* 1 - register device number */
-    if (0 != alloc_chrdev_region(&choen_drv_box.dev_num_base, 0, NUM_OF_DEVICES, "choen-dev-num"))
+    if (0 != alloc_chrdev_region(&devn, 0, NUM_OF_DEVICES, "choen-dev-num"))
     {
         pr_warn("choen_init > fail to allocate device number\n");
 		goto error1;
     }
-
+    choen_drv_box.major = MAJOR(devn);
     /* 2 - create class */
     choen_drv_box.pclass = class_create(THIS_MODULE, "choen-class");
     if (IS_ERR(choen_drv_box.pclass))
@@ -96,7 +177,7 @@ static int __init choen_init(void) /* Constructor */
 error3:
     class_destroy(choen_drv_box.pclass);
 error2:
-    unregister_chrdev_region(choen_drv_box.dev_num_base, NUM_OF_DEVICES);
+    unregister_chrdev_region(devn, NUM_OF_DEVICES);
 error1:
     return -1;
 }
@@ -106,7 +187,7 @@ static void __exit choen_exit(void) /* Destructor */
     pr_info("Goodbye: choen driver unloaded\n");
     platform_driver_unregister(&choen_driver);
     class_destroy(choen_drv_box.pclass);
-    unregister_chrdev_region(choen_drv_box.dev_num_base, NUM_OF_DEVICES);
+    unregister_chrdev_region(MKDEV(choen_drv_box.major, 0), NUM_OF_DEVICES);
 }
 
 module_init(choen_init);
