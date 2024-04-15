@@ -8,9 +8,11 @@
 #include <linux/device.h>
 #include <linux/device/class.h>
 #include <linux/slab.h>
+#include <linux/string.h>
 #include "choen_common.h"
 
 #define NUM_OF_DEVICES      2
+#define MIN(x, y)           ((x < y)? x:y)
 /* choen driver handler is static and hold general driver information */
 struct choen_drv_handler {
     int major;
@@ -21,6 +23,7 @@ struct choen_drv_handler {
 /* choen device handler is dynamic allocated upon a device appears, 
 hold specific info to handle this device */
 struct choen_dev_handler {
+    struct choen_dev_priv *pdev_priv_data;
     dev_t dev_num;
     struct device *pdev;
     struct cdev cdev;
@@ -31,17 +34,49 @@ static struct choen_drv_handler choen_drv_box = {0, 0, NULL};
 /****************** open - close - read - write ***********************/
 static int choen_open(struct inode * p_inote, struct file * p_file)
 {
+    struct choen_dev_handler* p_choen_dev;
+    p_choen_dev = container_of(p_inote->i_cdev, struct choen_dev_handler, cdev);
+    if (p_choen_dev == NULL)
+    {
+        pr_err("choen_open > fail to get choen_dev_handler object\n");
+        return -EFAULT;
+    }
+    pr_info("choen_open > device num %d - %d\n", MAJOR(p_choen_dev->dev_num), MINOR(p_choen_dev->dev_num));
+    p_file->private_data = p_choen_dev;
     return 0;
 }
 
 static int choen_close(struct inode* p_inote, struct file* p_file)
 {
+    struct choen_dev_handler* p_choen_dev;
+    p_choen_dev = p_file->private_data;
+    if (p_choen_dev == NULL)
+    {
+        pr_err("choen_close > fail to get choen_dev_handler object\n");
+        return -EFAULT;
+    }
+    pr_info("choen_close > device num %d - %d\n", MAJOR(p_choen_dev->dev_num), MINOR(p_choen_dev->dev_num));
     return 0;
 }
 
 static ssize_t choen_read(struct file* p_file, char __user * p_buf, size_t len, loff_t* p_offset)
 {
-    return 0;
+    loff_t l_offset = *p_offset;
+    struct choen_dev_handler* p_choen_dev = p_file->private_data;
+    size_t l_len = MIN(strlen(p_choen_dev->pdev_priv_data->serial), len);
+    
+    if (l_offset != 0)
+    {
+        return 0;
+    }
+
+    if(0 != copy_to_user(p_buf, p_choen_dev->pdev_priv_data->serial, l_len))
+    {
+        return -EFAULT;
+    }
+    l_offset += l_len;
+    *p_offset = l_offset;
+    return l_len;
 }
 	
 static ssize_t choen_write(struct file* p_file, const char __user * p_buf, size_t len, loff_t* p_offset)
@@ -86,7 +121,7 @@ int choen_probe(struct platform_device* pdev)
     cdev_init(&pchoen_dev_box->cdev, &fops);
     pchoen_dev_box->cdev.owner = THIS_MODULE;
     pchoen_dev_box->dev_num = MKDEV(choen_drv_box.major, choen_drv_box.dev_count);
-
+    pchoen_dev_box->pdev_priv_data = pdev_prv_data;
     ret = cdev_add(&pchoen_dev_box->cdev, pchoen_dev_box->dev_num, 1);
     if (0 != ret)
     {
