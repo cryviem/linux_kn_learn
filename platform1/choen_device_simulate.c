@@ -25,14 +25,14 @@ void choen_dev_release(struct device* pdev)
 /* create this struct to carry all devices information */
 struct platform_device choen_dev0 = 
 {
-    .name = "choen-dev",
+    .name = "choen-dev-0",
     .id = 0,
     .dev = {.platform_data = &choen_priv_table[0], .release = choen_dev_release}
 };
 
 struct platform_device choen_dev1 = 
 {
-    .name = "choen-dev",
+    .name = "choen-dev-1",
     .id = 1,
     .dev = {.platform_data = &choen_priv_table[1], .release = choen_dev_release}
 };

@@ -9,6 +9,7 @@
 #include <linux/device/class.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/mod_devicetable.h>
 #include "choen_common.h"
 
 #define NUM_OF_DEVICES      2
@@ -109,7 +110,7 @@ int choen_probe(struct platform_device* pdev)
     }
 
     pr_info("choen_probe > connected to device serial: %s\n", pdev_prv_data->serial);
-
+    pr_info("choen_probe > driver id is: %s - index: %ld\n", pdev->id_entry->name, pdev->id_entry->driver_data);
     /* 1 - allocate choen_dev_handler instant */
     pchoen_dev_box = kzalloc(sizeof(struct choen_dev_handler), GFP_KERNEL);
     if (!pchoen_dev_box) {
@@ -174,11 +175,19 @@ int choen_remove(struct platform_device* pdev)
     return 0;
 }
 
+
+struct platform_device_id supported_dev_id[2] = 
+{
+    {"choen-dev-0", 0},
+    {"choen-dev-1", 1}
+};
+
 struct platform_driver choen_driver =
 {
     .probe = choen_probe,
     .remove = choen_remove,
-    .driver = {.name = "choen-dev"}
+    .driver = {.name = "choen-dev"},
+    .id_table = supported_dev_id
 };
 
 static int __init choen_init(void) /* Constructor */
