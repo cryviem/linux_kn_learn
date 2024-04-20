@@ -31,7 +31,6 @@ struct choen_dev_handler {
 };
 
 static struct choen_drv_handler choen_drv_box = {0, 0, NULL};
-
 /****************** open - close - read - write ***********************/
 static int choen_open(struct inode * p_inote, struct file * p_file)
 {
@@ -93,6 +92,35 @@ static struct file_operations fops = {
     .write = choen_write,
 };
 /****************** open - close - read - write ***********************/
+
+/****************** attribute in sysfs ***********************/
+ssize_t serial_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    struct choen_dev_priv *prv_data;
+
+    if (prv_data == NULL)
+    {
+        pr_warn("serial_show > no device private data found\n");
+        return -EINVAL;
+    }
+    return sprintf(buf, "serial: %s\n", prv_data->serial);
+}
+
+ssize_t serial2_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    struct choen_dev_priv *prv_data;
+    prv_data = (struct choen_dev_priv*)dev_get_platdata(dev);
+    if (prv_data == NULL)
+    {
+        pr_warn("serial_show > no device private data found\n");
+        return -EINVAL;
+    }
+    return sprintf(buf, "serial: %s\n", prv_data->serial);
+}
+
+static DEVICE_ATTR_RO(serial);
+static DEVICE_ATTR_RO(serial2);
+/****************** attribute in sysfs ***********************/
 int choen_probe(struct platform_device* pdev)
 {
     int ret;
@@ -126,7 +154,7 @@ int choen_probe(struct platform_device* pdev)
     ret = cdev_add(&pchoen_dev_box->cdev, pchoen_dev_box->dev_num, 1);
     if (0 != ret)
     {
-        pr_err("_dev_init > fail to register cdev\n");
+        pr_err("choen_probe > fail to register cdev\n");
 		goto error1;
     }
     /* 3 - create device item in /sys/class/choen-class */
@@ -134,17 +162,36 @@ int choen_probe(struct platform_device* pdev)
     if (IS_ERR(pchoen_dev_box->pdev))
     {
         ret = (int)PTR_ERR(pchoen_dev_box->pdev);
-        pr_warn("choen_init > fail to add device to class, err %d\n", ret);
+        pr_warn("choen_probe > fail to add device to class, err %d\n", ret);
 
         goto error2;
     }
 
+    /* create attribute serial for class/dev */
+    ret = sysfs_create_file(&pchoen_dev_box->pdev->kobj, &dev_attr_serial.attr);
+    if (ret != 0)
+    {
+        pr_warn("choen_probe > fail to add serial attribute, err %d\n", ret);
+        goto error3;
+    }
+
+    /* create attribute serial for class/dev */
+    ret = sysfs_create_file(&pdev->dev.kobj, &dev_attr_serial2.attr);
+    if (ret != 0)
+    {
+        pr_warn("choen_probe > fail to add serial2 attribute, err %d\n", ret);
+        goto error4;
+    }
     /* 4 - save choen_dev_handler instance pointer to */
-    dev_set_drvdata(&pdev->dev, pchoen_dev_box);
+    dev_set_drvdata(&pdev->dev, pchoen_dev_box);  
 
     choen_drv_box.dev_count++;
     return 0;
 
+error4:
+    sysfs_remove_file(&pchoen_dev_box->pdev->kobj, &dev_attr_serial.attr);
+error3:
+    device_destroy(choen_drv_box.pclass, pchoen_dev_box->dev_num);
 error2:
     cdev_del(&pchoen_dev_box->cdev);
 error1:
@@ -170,8 +217,11 @@ int choen_remove(struct platform_device* pdev)
         pr_err("choen_remove > choen_dev_handler object not found\n");
         return -1;
     }
+    sysfs_remove_file(&pdev->dev.kobj, &dev_attr_serial2.attr);
+    sysfs_remove_file(&pchoen_dev_box->pdev->kobj, &dev_attr_serial.attr);
     device_destroy(choen_drv_box.pclass, pchoen_dev_box->dev_num);
-    
+    cdev_del(&pchoen_dev_box->cdev);
+    kfree(pchoen_dev_box);
     return 0;
 }
 
